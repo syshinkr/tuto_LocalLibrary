@@ -91,3 +91,48 @@ class LoanedBooksAllListView(PermissionRequiredMixin, generic.ListView):
 
     def get_queryset(self):
         return BookInstance.objects.filter(status__exact='o').order_by('due_back')
+
+
+import datetime
+
+from django.contrib.auth.decorators import permission_required
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+
+from catalog.forms import RenewBookForm
+
+
+@permission_required('catalog.can_mark_returned')
+def renew_book_librarian(request, pk):
+    """도서관 사서에 의해 특정 BookInstance를 갱신하는 뷰 함수."""
+    book_instance = get_object_or_404(BookInstance, pk=pk)
+
+    # POST 요청이면 폼 데이터를 처리한다
+    if request.method == 'POST':
+
+        # 폼 인스턴스를 생성하고 요청에 의한 데이타로 채운다 (binding):
+        book_renewal_form = RenewBookForm(request.POST)
+
+        # 폼이 유효한지 체크한다:
+        if book_renewal_form.is_valid():
+            # book_renewal_form.cleaned_data 데이타를 요청받은대로 처리한다(여기선 그냥 모델 due_back 필드에 써넣는다)
+            book_instance.due_back = book_renewal_form.cleaned_data['renewal_date']
+            book_instance.save()
+
+            # 새로운 URL로 보낸다:
+            # reverse(): URL 설정(configuration) 의 이름과 전달인자들로 부터 URL을 만들어낸다. 
+            # 템플릿에서 사용했던 url태그에 해당하는 파이썬 형식의 동일 표현이다.
+            return HttpResponseRedirect(reverse('all-borrowed') )
+
+    # GET 요청(혹은 다른 메소드)이면 기본 폼을 생성한다.
+    else:
+        proposed_renewal_date = datetime.date.today() + datetime.timedelta(weeks=3)
+        book_renewal_form = RenewBookForm(initial={'renewal_date': proposed_renewal_date})
+
+    context = {
+        'form': book_renewal_form,
+        'book_instance': book_instance,
+    }
+
+    return render(request, 'catalog/book_renew_librarian.html', context)
